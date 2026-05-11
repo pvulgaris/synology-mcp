@@ -3,4 +3,5 @@ dist/
 *.log
 .env
 .env.local
+!.env.example
 audit/

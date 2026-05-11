@@ -74,27 +74,47 @@ If your tailnet uses the default open ACL ("everyone can talk to everyone"), add
 
 DSM → Control Panel → Notification → Email — point at your Gmail account. When packages have updates, DSM emails you. Set up a Gmail filter to label those messages (e.g., `synology/updates`) so Claude can find them via the Gmail MCP tools.
 
-## 6. Container build + run
+## 6. Container deploy (Project mode, recommended)
 
-On the NAS (via SSH as your normal admin user, or via File Station upload):
+Use Container Manager's **Project** feature, not Container. Project mode reads
+`docker-compose.yml` + `.env` from a directory on the NAS, so upgrades are
+"swap the image and click Rebuild" — env vars persist on disk.
 
-```sh
-mkdir -p /volume1/docker/synology-nas-mcp/audit
-cd /volume1/docker
-git clone https://github.com/pvulgaris/synology-nas-mcp.git
-```
+### One-time setup
 
-In DSM → Container Manager → Project → Create:
+1. Build the image locally on your Mac (cross-build to linux/amd64 since the DS224+ is x86_64):
 
-- **Path**: `/volume1/docker/synology-nas-mcp`
-- **Source**: "Create docker-compose.yml" — paste `synology.compose.yml` contents, OR upload the file.
-- **Environment variables** (project-level — set them here, not in the compose file):
-  - `OP_SERVICE_ACCOUNT_TOKEN` = (the service-account token from step 3)
-  - `DSM_BASE_URL` = `https://localhost:5001`
-  - `DSM_OP_VAULT` = the 1Password vault name from step 3
-  - (anything else from the compose file's optional list, if you want to override)
+   ```sh
+   cd ~/Dropbox/Code/synology-nas-mcp
+   docker build --platform linux/amd64 -t synology-nas-mcp:latest .
+   docker save synology-nas-mcp:latest -o ~/Downloads/synology-nas-mcp-latest.tar
+   ```
 
-Click **Build** → **Run**. Container Manager builds the image, starts the container.
+   (If you don't have Docker: `brew install colima docker && colima start` first.)
+
+2. Prepare the NAS directory. DSM → File Station → `/volume1/docker/`. Create folder `synology-nas-mcp`. Inside it, create folder `audit`. Upload three files into `synology-nas-mcp/`:
+   - The image tar from step 1 (`synology-nas-mcp-latest.tar`).
+   - `docker-compose.yml` — copy of `synology.compose.yml` from this repo, renamed.
+   - `.env` — copy of `.env.example` with your real values filled in. **Set strict perms** afterwards: `chmod 600 .env` (SSH in or use a Task Scheduler one-shot script). Contains the 1Password service-account token.
+
+3. Import the image. DSM → Container Manager → **Image** → Add → Add from file → select the tar. Verify `synology-nas-mcp:latest` (and `:version`) appear.
+
+4. Create the project. DSM → Container Manager → **Project** → **Create**:
+   - Project name: `synology-nas-mcp`
+   - Path: `/volume1/docker/synology-nas-mcp`
+   - Source: **Use existing docker-compose.yml**
+   - Click **Next** → review → **Done**. Project will start.
+
+### Upgrades
+
+1. Rebuild + save tar on your Mac:
+   ```sh
+   docker build --platform linux/amd64 -t synology-nas-mcp:latest .
+   docker save synology-nas-mcp:latest -o ~/Downloads/synology-nas-mcp-latest.tar
+   ```
+2. Upload tar to `/volume1/docker/synology-nas-mcp/` (overwrite the old one).
+3. Container Manager → **Image** → Add from file → the new tar (this updates `:latest` in DSM's local image store).
+4. Container Manager → **Project** → `synology-nas-mcp` → **Action → Build** (recreates the container with the new image digest; `.env` persists).
 
 ## 7. Verify
 
