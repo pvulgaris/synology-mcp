@@ -1,0 +1,48 @@
+# Container Manager "project" definition for synology-nas-mcp.
+#
+# On DSM: Container Manager → Projects → Create → upload this file (or paste).
+# Source: "Set source from upload" pointing at the cloned repo on the NAS.
+#
+# Required env to set in the Container Manager UI (NOT in this file — they
+# contain a long-lived secret and a NAS-specific URL):
+#
+#   OP_SERVICE_ACCOUNT_TOKEN  — 1Password service account token, read-scoped
+#                               to the "Synology DSM — claude-mcp" item.
+#   DSM_BASE_URL              — usually https://localhost:5001 (in-container,
+#                               talking to DSM on the same host).
+#   DSM_OP_VAULT              — 1Password vault holding the item.
+#
+# Optional:
+#   DSM_USER                  — DSM account name (default: claude-mcp)
+#   MCP_BIND_HOST             — explicit interface IP; default = resolve tailscale0
+#   MCP_BIND_PORT             — default 8765
+#   MCP_ALLOWED_ORIGINS       — comma-separated Origin allowlist
+#                               (default: http://localhost,http://127.0.0.1,null)
+#   TLS_REJECT_UNAUTHORIZED   — "0" to skip cert validation (default 0; DSM uses
+#                               a self-signed cert on localhost:5001)
+#
+# network_mode: host lets the container see tailscale0. The HTTP server
+# binds to that interface only — it is NOT reachable on the NAS's eth0 LAN IP.
+
+services:
+  synology-nas-mcp:
+    build:
+      context: .
+    image: synology-nas-mcp:0.1.0
+    container_name: synology-nas-mcp
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      # The required vars above are picked up from Container Manager's
+      # project-level env. Leaving them unset here on purpose.
+      DSM_BASE_URL: ${DSM_BASE_URL}
+      DSM_OP_VAULT: ${DSM_OP_VAULT}
+      DSM_OP_ITEM: ${DSM_OP_ITEM:-Synology DSM — claude-mcp}
+      DSM_USER: ${DSM_USER:-claude-mcp}
+      MCP_BIND_HOST: ${MCP_BIND_HOST:-}
+      MCP_BIND_PORT: ${MCP_BIND_PORT:-8765}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1,null}
+      TLS_REJECT_UNAUTHORIZED: ${TLS_REJECT_UNAUTHORIZED:-0}
+      OP_SERVICE_ACCOUNT_TOKEN: ${OP_SERVICE_ACCOUNT_TOKEN}
+    volumes:
+      - /volume1/docker/synology-nas-mcp/audit:/audit
