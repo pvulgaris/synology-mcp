@@ -10,7 +10,6 @@
 import express from "express";
 import os from "node:os";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { randomUUID } from "node:crypto";
 import type { Config } from "./config.js";
 import { loadCredentials } from "./auth.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -69,7 +68,7 @@ export async function startHttpDaemon(
   // Health endpoint — bypasses auth so you can curl it from a tailnet host
   // without rotating the bearer token. Returns no NAS state.
   app.get("/healthz", (_req, res) => {
-    res.json({ ok: true, server: "synology-nas-mcp", version: "0.1.1" });
+    res.json({ ok: true, server: "synology-nas-mcp", version: "0.1.2" });
   });
 
   // Auth + Origin middleware applied to /mcp.
@@ -88,11 +87,13 @@ export async function startHttpDaemon(
     next();
   };
 
-  // One Streamable HTTP session per request (stateless mode). Simpler than
-  // server-managed sessions; clients reconnect transparently.
+  // Stateless mode: `sessionIdGenerator: undefined` tells the SDK not to
+  // require an initialize handshake before each call. Each HTTP request is
+  // fully independent. Suits us — we hold no per-client state; the DSM SID
+  // cache and credentials are server-wide.
   app.all("/mcp", authMw, async (req, res) => {
     const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID(),
+      sessionIdGenerator: undefined,
     });
     res.on("close", () => transport.close());
     await server.connect(transport);
