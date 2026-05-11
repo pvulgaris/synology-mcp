@@ -47,7 +47,7 @@ Residual risk: full DSM compromise if (1Password vault leaks) AND (Tailscale dev
 
 In 1Password:
 
-1. Create item **"Synology DSM — claude-mcp"** in a vault you don't share. Fields:
+1. Create item **"Synology DSM - claude-mcp"** in a vault you don't share. Use only ASCII hyphens (`-`), not em-dashes (`—`) — the `op read` CLI rejects em-dashes in secret references. Fields:
    - `password` — the DSM password set above
    - `totp` — the TOTP **secret** (not a generated code; the raw base32 string DSM showed when you enabled 2FA)
    - `mcp_bearer_token` — generate a random 32-byte hex string: `openssl rand -hex 32`
@@ -98,10 +98,10 @@ Click **Build** → **Run**. Container Manager builds the image, starts the cont
 
 ## 7. Verify
 
-From a Mac on the tailnet (read the bearer token via `op read "op://<vault>/Synology DSM — claude-mcp/mcp_bearer_token"`):
+From a Mac on the tailnet (read the bearer token via `op read "op://<vault>/Synology DSM - claude-mcp/mcp_bearer_token"`):
 
 ```sh
-TOKEN=$(op read "op://<vault>/Synology DSM — claude-mcp/mcp_bearer_token")
+TOKEN=$(op read "op://<vault>/Synology DSM - claude-mcp/mcp_bearer_token")
 curl -i -H "Authorization: Bearer $TOKEN" http://nas.local:8765/healthz
 # expect: 200 OK {"ok":true,"server":"synology-nas-mcp","version":"0.1.0"}
 
@@ -128,7 +128,7 @@ From a tailnet device not in the ACL allowlist, same curl times out at the ACL l
 
 Claude Code CLI (one Mac):
 ```sh
-TOKEN=$(op read "op://<vault>/Synology DSM — claude-mcp/mcp_bearer_token")
+TOKEN=$(op read "op://<vault>/Synology DSM - claude-mcp/mcp_bearer_token")
 claude mcp add synology http://nas.local:8765/mcp --header "Authorization: Bearer $TOKEN"
 ```
 

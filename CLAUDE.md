@@ -14,6 +14,10 @@ When a method's response shape changes between DSM minor versions, fail open in 
 
 There are several `synology-*` npm packages. None covered SYNO.Core.Package, SYNO.SecurityAdvisor.*, and SYNO.Core.Share with the field-level options we need. Rolling our own thin client (~200 lines in `dsm.ts`) was cleaner than wrapping a community lib for partial coverage. Don't add a dep here unless one of them grows into mature coverage.
 
+## 1Password item names: ASCII hyphen only
+
+`op read op://vault/item/field` rejects unicode dashes (em-dash `—`, en-dash `–`) in item names with "invalid character in secret reference." Spaces are fine; only the dashes need to be ASCII. The default in config.ts is `Synology DSM - claude-mcp` for this reason — don't change it to the prettier em-dash. If you ever rename the 1Password item, mirror the new name to `DSM_OP_ITEM` env var on the container.
+
 ## Why claude-mcp is in `administrators`
 
 DSM 7's admin APIs (`SYNO.Core.Package.*`, `SYNO.SecurityAdvisor.*`, `SYNO.Core.User.*`, `SYNO.Core.Share`, etc.) gate on `administrators` group membership. There is no selective-grant mechanism for non-admin users — DSM's "Application Privileges" page covers only end-user services (File Station, SMB, AFP, ...). An earlier draft of this repo planned a non-admin claude-mcp user with selective Package Center / Security Advisor access; that plan was wrong about what DSM actually supports.

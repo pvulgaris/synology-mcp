@@ -7,7 +7,7 @@
 # contain a long-lived secret and a NAS-specific URL):
 #
 #   OP_SERVICE_ACCOUNT_TOKEN  — 1Password service account token, read-scoped
-#                               to the "Synology DSM — claude-mcp" item.
+#                               to the "Synology DSM - claude-mcp" item.
 #   DSM_BASE_URL              — usually https://localhost:5001 (in-container,
 #                               talking to DSM on the same host).
 #   DSM_OP_VAULT              — 1Password vault holding the item.
@@ -37,7 +37,7 @@ services:
       # project-level env. Leaving them unset here on purpose.
       DSM_BASE_URL: ${DSM_BASE_URL}
       DSM_OP_VAULT: ${DSM_OP_VAULT}
-      DSM_OP_ITEM: ${DSM_OP_ITEM:-Synology DSM — claude-mcp}
+      DSM_OP_ITEM: ${DSM_OP_ITEM:-Synology DSM - claude-mcp}
       DSM_USER: ${DSM_USER:-claude-mcp}
       MCP_BIND_HOST: ${MCP_BIND_HOST:-}
       MCP_BIND_PORT: ${MCP_BIND_PORT:-8765}
