@@ -45,25 +45,43 @@ export async function nasPackagesList(dsm: DsmClient) {
 }
 
 export async function nasPackagesCheckUpdates(dsm: DsmClient) {
-  const data = await dsm.call({
-    api: "SYNO.Core.Package.Server",
-    method: "list",
-    version: 2,
-    params: { tab: "update" },
-  });
-  const items = (data?.packages ?? []).filter(
-    (p: any) => !HARD_REFUSE_NAMES.has(p.id)
-  );
-  return {
-    pending: items.map((p: any) => ({
+  // `SYNO.Core.Package.Server.list?tab=update` returns the whole catalog of
+  // packages installable on this DS — NOT actual pending updates — and the
+  // response has no installed_version field, so we can't filter from one
+  // endpoint. Pull the installed-package list and intersect.
+  const [installed, catalog] = await Promise.all([
+    dsm.call<any>({
+      api: "SYNO.Core.Package",
+      method: "list",
+      version: 2,
+    }),
+    dsm.call<any>({
+      api: "SYNO.Core.Package.Server",
+      method: "list",
+      version: 2,
+      params: { tab: "update" },
+    }),
+  ]);
+  const installedVersionById = new Map<string, string>();
+  for (const p of installed?.packages ?? []) {
+    installedVersionById.set(p.id, p.version);
+  }
+  const pending: Array<Record<string, unknown>> = [];
+  for (const p of catalog?.packages ?? []) {
+    if (HARD_REFUSE_NAMES.has(p.id)) continue;
+    const installedVersion = installedVersionById.get(p.id);
+    if (!installedVersion) continue; // not installed on this NAS
+    if (installedVersion === p.version) continue; // already current
+    pending.push({
       id: p.id,
       name: p.name,
-      installed_version: p.installed_version,
+      installed_version: installedVersion,
       available_version: p.version,
       changelog: p.changelog,
       beta: p.beta,
-    })),
-  };
+    });
+  }
+  return { pending };
 }
 
 export async function nasPackageInfo(

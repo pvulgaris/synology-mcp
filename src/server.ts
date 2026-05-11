@@ -57,7 +57,7 @@ function safeTool<A>(fn: (args: A) => Promise<unknown>) {
 
 export function createServer(cfg: Config, dsm: DsmClient): McpServer {
   const server = new McpServer(
-    { name: "synology-nas-mcp", version: "0.1.3" },
+    { name: "synology-nas-mcp", version: "0.1.4" },
     { instructions: SERVER_INSTRUCTIONS }
   );
 
