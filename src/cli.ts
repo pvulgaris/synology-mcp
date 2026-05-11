@@ -17,6 +17,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { loadConfig } from "./config.js";
 import { createServer } from "./server.js";
+import { DsmClient } from "./dsm.js";
 import { startHttpDaemon } from "./http.js";
 
 async function serveStdio() {
@@ -24,7 +25,8 @@ async function serveStdio() {
   if (!cfg.tlsRejectUnauthorized) {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   }
-  const server = createServer(cfg);
+  const dsm = new DsmClient(cfg);
+  const server = createServer(cfg, dsm);
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("[serve] synology-nas-mcp ready on stdio");
@@ -35,8 +37,7 @@ async function serveHttp() {
   if (!cfg.tlsRejectUnauthorized) {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   }
-  const server = createServer(cfg);
-  await startHttpDaemon(cfg, server);
+  await startHttpDaemon(cfg);
 }
 
 /**
@@ -62,13 +63,33 @@ async function bridge() {
   });
   const downstream = new StdioServerTransport();
 
-  // Bidirectional message forwarding.
-  upstream.onmessage = (msg) => downstream.send(msg);
-  downstream.onmessage = (msg) => upstream.send(msg);
+  // Client → server forwarding. Two safety rules:
+  //   1. Swallow `notifications/*` from the client. The HTTP daemon is
+  //      stateless, so client-side handshake notifications like
+  //      `notifications/initialized` have nothing to update and the SDK
+  //      throws 500 trying to handle them. Filtering at the bridge keeps
+  //      the daemon clean and Claude Desktop happy.
+  //   2. .catch any send rejection. Unhandled promise rejections kill the
+  //      Node process on v22+, which manifested as "Connection closed" on
+  //      every spawn after the first.
+  downstream.onmessage = (msg) => {
+    const m = msg as any;
+    if (m && typeof m.method === "string" && m.method.startsWith("notifications/")) {
+      return;
+    }
+    upstream.send(msg).catch((err) => {
+      console.error("[bridge] upstream send failed:", err?.message ?? err);
+    });
+  };
+  upstream.onmessage = (msg) => {
+    downstream.send(msg).catch((err) => {
+      console.error("[bridge] downstream send failed:", err?.message ?? err);
+    });
+  };
   upstream.onclose = () => downstream.close();
   downstream.onclose = () => upstream.close();
-  upstream.onerror = (err) => console.error("[bridge] upstream:", err);
-  downstream.onerror = (err) => console.error("[bridge] downstream:", err);
+  upstream.onerror = (err) => console.error("[bridge] upstream:", err?.message ?? err);
+  downstream.onerror = (err) => console.error("[bridge] downstream:", err?.message ?? err);
 
   await Promise.all([upstream.start(), downstream.start()]);
 }

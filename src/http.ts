@@ -12,7 +12,8 @@ import os from "node:os";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Config } from "./config.js";
 import { loadCredentials } from "./auth.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { DsmClient } from "./dsm.js";
+import { createServer } from "./server.js";
 
 function resolveBindHost(cfg: Config): string {
   if (cfg.mcpBindHost) return cfg.mcpBindHost;
@@ -54,13 +55,15 @@ function resolveBindHost(cfg: Config): string {
 }
 
 export async function startHttpDaemon(
-  cfg: Config,
-  server: McpServer
+  cfg: Config
 ): Promise<{ host: string; port: number }> {
   const creds = await loadCredentials(cfg);
   const expected = `Bearer ${creds.bearerToken}`;
   const host = resolveBindHost(cfg);
   const port = cfg.mcpBindPort;
+  // One DsmClient across all requests — keeps the SID cache warm so we don't
+  // re-login on every MCP call. The per-request McpServer wraps this.
+  const dsm = new DsmClient(cfg);
 
   const app = express();
   app.use(express.json({ limit: "4mb" }));
@@ -68,7 +71,7 @@ export async function startHttpDaemon(
   // Health endpoint — bypasses auth so you can curl it from a tailnet host
   // without rotating the bearer token. Returns no NAS state.
   app.get("/healthz", (_req, res) => {
-    res.json({ ok: true, server: "synology-nas-mcp", version: "0.1.2" });
+    res.json({ ok: true, server: "synology-nas-mcp", version: "0.1.3" });
   });
 
   // Auth + Origin middleware applied to /mcp.
@@ -87,17 +90,34 @@ export async function startHttpDaemon(
     next();
   };
 
-  // Stateless mode: `sessionIdGenerator: undefined` tells the SDK not to
-  // require an initialize handshake before each call. Each HTTP request is
-  // fully independent. Suits us — we hold no per-client state; the DSM SID
-  // cache and credentials are server-wide.
+  // Stateless mode: `sessionIdGenerator: undefined` tells the SDK each HTTP
+  // request is fully independent. The MCP SDK's stateless pattern requires a
+  // FRESH McpServer + transport per request — a shared server gets stuck in
+  // a "ready" state after first use and 500s on subsequent calls. We hoist
+  // the DsmClient outside (singleton with SID cache) so per-request server
+  // creation is cheap.
   app.all("/mcp", authMw, async (req, res) => {
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-    });
-    res.on("close", () => transport.close());
-    await server.connect(transport);
-    await transport.handleRequest(req, res, req.body);
+    try {
+      const server = createServer(cfg, dsm);
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+      });
+      res.on("close", () => {
+        transport.close();
+        server.close().catch(() => {});
+      });
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+    } catch (err: any) {
+      console.error("[/mcp]", err?.message ?? err);
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: "2.0",
+          error: { code: -32603, message: "Internal server error" },
+          id: null,
+        });
+      }
+    }
   });
 
   await new Promise<void>((resolve) =>

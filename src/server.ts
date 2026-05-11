@@ -10,7 +10,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Config } from "./config.js";
-import { DsmClient } from "./dsm.js";
+import type { DsmClient } from "./dsm.js";
 import { SERVER_INSTRUCTIONS } from "./instructions.js";
 import { nasStatus, nasStorageHealth } from "./tools/system.js";
 import {
@@ -55,12 +55,11 @@ function safeTool<A>(fn: (args: A) => Promise<unknown>) {
   };
 }
 
-export function createServer(cfg: Config): McpServer {
+export function createServer(cfg: Config, dsm: DsmClient): McpServer {
   const server = new McpServer(
-    { name: "synology-nas-mcp", version: "0.1.2" },
+    { name: "synology-nas-mcp", version: "0.1.3" },
     { instructions: SERVER_INSTRUCTIONS }
   );
-  const dsm = new DsmClient(cfg);
 
   // ── Read tools — free to invoke ───────────────────────────────────────────
 
