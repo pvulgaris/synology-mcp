@@ -184,7 +184,7 @@ async function startDownload(
   const result = await dsm.call<any>({
     api: "SYNO.Core.Package.Installation",
     method: "install",
-    version: 2,
+    version: 1,
     post: true,
     params: {
       operation: "install",
@@ -215,7 +215,7 @@ async function pollDownloadToFilename(
     const status = await dsm.call<any>({
       api: "SYNO.Core.Package.Installation",
       method: "status",
-      version: 2,
+      version: 1,
       params: { task_id: taskId },
     });
     if (status?.has_fail) {
@@ -227,7 +227,7 @@ async function pollDownloadToFilename(
       const check = await dsm.call<any>({
         api: "SYNO.Core.Package.Installation.Download",
         method: "check",
-        version: 2,
+        version: 1,
         params: { task_id: taskId },
       });
       const filename = check?.filename;
@@ -253,7 +253,7 @@ async function checkInstallFeasibility(
   const result = await dsm.call<any>({
     api: "SYNO.Core.Package.Installation",
     method: "check",
-    version: 2,
+    version: 1,
     post: true,
     params: {
       id: packageId,
@@ -280,7 +280,7 @@ async function applyInstall(
   await dsm.call({
     api: "SYNO.Core.Package.Installation",
     method: "install",
-    version: 2,
+    version: 1,
     post: true,
     params: {
       type: 0,
@@ -299,7 +299,7 @@ async function applyUpgrade(dsm: DsmClient, taskId: string): Promise<void> {
   await dsm.call({
     api: "SYNO.Core.Package.Installation",
     method: "upgrade",
-    version: 2,
+    version: 1,
     post: true,
     params: {
       task_id: taskId,
