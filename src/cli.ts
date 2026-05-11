@@ -14,6 +14,7 @@
  */
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { loadConfig } from "./config.js";
 import { createServer } from "./server.js";
 import { startHttpDaemon } from "./http.js";
@@ -38,6 +39,40 @@ async function serveHttp() {
   await startHttpDaemon(cfg, server);
 }
 
+/**
+ * Bridge subcommand: a tiny stdio MCP server that proxies to the HTTP daemon.
+ * Use this from Claude Desktop, which only accepts stdio MCP entries — the
+ * bridge runs on your Mac, the daemon runs on the NAS.
+ *
+ * Required env (set in claude_desktop_config.json under "env"):
+ *   MCP_BRIDGE_URL    e.g. http://nas.local:8765/mcp
+ *   MCP_BRIDGE_TOKEN  the bearer token (the same one used by claude mcp add)
+ */
+async function bridge() {
+  const url = process.env.MCP_BRIDGE_URL;
+  const token = process.env.MCP_BRIDGE_TOKEN;
+  if (!url || !token) {
+    console.error(
+      "[bridge] missing MCP_BRIDGE_URL or MCP_BRIDGE_TOKEN env var"
+    );
+    process.exit(2);
+  }
+  const upstream = new StreamableHTTPClientTransport(new URL(url), {
+    requestInit: { headers: { Authorization: `Bearer ${token}` } },
+  });
+  const downstream = new StdioServerTransport();
+
+  // Bidirectional message forwarding.
+  upstream.onmessage = (msg) => downstream.send(msg);
+  downstream.onmessage = (msg) => upstream.send(msg);
+  upstream.onclose = () => downstream.close();
+  downstream.onclose = () => upstream.close();
+  upstream.onerror = (err) => console.error("[bridge] upstream:", err);
+  downstream.onerror = (err) => console.error("[bridge] downstream:", err);
+
+  await Promise.all([upstream.start(), downstream.start()]);
+}
+
 async function main() {
   const cmd = process.argv[2] ?? "serve";
   switch (cmd) {
@@ -47,9 +82,12 @@ async function main() {
     case "daemon":
       await serveHttp();
       break;
+    case "bridge":
+      await bridge();
+      break;
     default:
       console.error(
-        `Unknown command: ${cmd}. Use 'serve' (stdio) or 'daemon' (HTTP).`
+        `Unknown command: ${cmd}. Use 'serve' (stdio direct), 'daemon' (HTTP), or 'bridge' (stdio→HTTP proxy).`
       );
       process.exit(2);
   }
