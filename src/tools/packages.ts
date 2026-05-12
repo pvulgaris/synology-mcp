@@ -247,7 +247,13 @@ async function getDownloadedFilename(
   return filename;
 }
 
-/** For fresh install: ask DSM what volume the package should land on. */
+/** Ask DSM what volume the package should land on.
+ *  - If Package Center has a default volume set, `volume_path` comes back
+ *    populated.
+ *  - If it's set to "Always ask me" (DSM default), `volume_path` is empty
+ *    and the caller is expected to pick from `volume_list`. We pick the
+ *    first volume with the most free space — usually the only one on a
+ *    consumer DS like the DS224+ (one /volume1). */
 async function checkInstallFeasibility(
   dsm: DsmClient,
   packageId: string
@@ -264,13 +270,31 @@ async function checkInstallFeasibility(
       blCheckDep: false,
     },
   });
-  const vp = result?.volume_path;
-  if (!vp) {
+  const direct = result?.volume_path;
+  if (typeof direct === "string" && direct.length > 0) {
+    return direct;
+  }
+  const candidates = Array.isArray(result?.volume_list) ? result.volume_list : [];
+  if (candidates.length === 0) {
     throw new Error(
-      `Install feasibility check did not return a volume_path: ${JSON.stringify(result)}`
+      `Install feasibility check returned no usable volume: ${JSON.stringify(result)}`
     );
   }
-  return vp;
+  // Most-free-space wins. Falls through to first if size_free is missing.
+  const pick = candidates
+    .slice()
+    .sort((a: any, b: any) => {
+      const af = Number(a?.size_free ?? 0);
+      const bf = Number(b?.size_free ?? 0);
+      return bf - af;
+    })[0];
+  const mount = pick?.mount_point;
+  if (typeof mount !== "string" || mount.length === 0) {
+    throw new Error(
+      `Install feasibility check: no mount_point on the chosen volume: ${JSON.stringify(pick)}`
+    );
+  }
+  return mount;
 }
 
 /** Apply a fresh install (the package wasn't installed before). */
