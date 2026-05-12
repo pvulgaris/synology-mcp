@@ -205,11 +205,8 @@ async function startDownload(
   return taskid;
 }
 
-/** Poll until the download completes, then resolve the on-disk filename. */
-async function pollDownloadToFilename(
-  dsm: DsmClient,
-  taskId: string
-): Promise<string> {
+/** Poll the install task until DSM reports the download finished. */
+async function pollDownloadDone(dsm: DsmClient, taskId: string): Promise<void> {
   const deadline = Date.now() + DOWNLOAD_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const status = await dsm.call<any>({
@@ -219,30 +216,35 @@ async function pollDownloadToFilename(
       params: { task_id: taskId },
     });
     if (status?.has_fail) {
-      throw new Error(
-        `DSM reports download failed: ${JSON.stringify(status)}`
-      );
+      throw new Error(`DSM reports download failed: ${JSON.stringify(status)}`);
     }
-    if (status?.finished) {
-      const check = await dsm.call<any>({
-        api: "SYNO.Core.Package.Installation.Download",
-        method: "check",
-        version: 1,
-        params: { task_id: taskId },
-      });
-      const filename = check?.filename;
-      if (!filename) {
-        throw new Error(
-          `Download finished but no filename returned: ${JSON.stringify(check)}`
-        );
-      }
-      return filename;
-    }
+    if (status?.finished) return;
     await sleep(DOWNLOAD_POLL_MS);
   }
   throw new Error(
     `Download did not finish within ${Math.round(DOWNLOAD_TIMEOUT_MS / 1000)}s`
   );
+}
+
+/** Used only for fresh installs: ask DSM for the on-disk file path after the
+ *  download finishes, so we can pass it as `path` to the install call. */
+async function getDownloadedFilename(
+  dsm: DsmClient,
+  taskId: string
+): Promise<string> {
+  const check = await dsm.call<any>({
+    api: "SYNO.Core.Package.Installation.Download",
+    method: "check",
+    version: 1,
+    params: { task_id: taskId },
+  });
+  const filename = check?.filename;
+  if (!filename) {
+    throw new Error(
+      `Download.check returned no filename: ${JSON.stringify(check)}`
+    );
+  }
+  return filename;
 }
 
 /** For fresh install: ask DSM what volume the package should land on. */
@@ -364,7 +366,7 @@ export async function nasPackageUpdate(
     }
     targetVersion = info.version;
     taskId = await startDownload(dsm, info);
-    await pollDownloadToFilename(dsm, taskId);
+    await pollDownloadDone(dsm, taskId);
     await applyUpgrade(dsm, taskId);
     after = await waitForState(
       dsm,
@@ -429,7 +431,8 @@ export async function nasPackageInstall(
     }
 
     taskId = await startDownload(dsm, info);
-    const filename = await pollDownloadToFilename(dsm, taskId);
+    await pollDownloadDone(dsm, taskId);
+    const filename = await getDownloadedFilename(dsm, taskId);
     const volumePath = await checkInstallFeasibility(dsm, args.name);
     await applyInstall(dsm, volumePath, filename);
     after = await waitForState(dsm, args.name, (s) => s != null);
