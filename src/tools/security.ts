@@ -125,7 +125,12 @@ export async function nasUsersList(dsm: DsmClient) {
 //   lives inside the profile.get response when firewall is enabled.
 // - `Firewall.Adapter.list` doesn't exist on DSM 7 — use Network.Interface.
 export async function nasFirewallList(dsm: DsmClient) {
-  const [firewall, profileNames, autoblock, autoblockEntries, portForward, interfaces] =
+  // AutoBlock.Rules.list requires both `offset/limit` AND `type=allow|deny`.
+  // 5100 with no params = missing required fields; 5102 with an invalid type
+  // value = enum rejection. Iterating both types captures the full allowlist
+  // + denylist (lockout history isn't on this surface — that's the live
+  // autoblock entries, which DSM doesn't seem to expose as a query at all).
+  const [firewall, profileNames, autoblock, allowList, denyList, interfaces] =
     await Promise.all([
       dsm
         .call({ api: "SYNO.Core.Security.Firewall", method: "get", version: 1 })
@@ -141,11 +146,16 @@ export async function nasFirewallList(dsm: DsmClient) {
           api: "SYNO.Core.Security.AutoBlock.Rules",
           method: "list",
           version: 1,
-          params: { offset: 0, limit: -1 },
+          params: { type: "allow", offset: 0, limit: -1 },
         })
         .catch(() => null),
       dsm
-        .call<any[]>({ api: "SYNO.Core.PortForwarding.Rules", method: "load", version: 1 })
+        .call({
+          api: "SYNO.Core.Security.AutoBlock.Rules",
+          method: "list",
+          version: 1,
+          params: { type: "deny", offset: 0, limit: -1 },
+        })
         .catch(() => null),
       dsm
         .call<any[]>({ api: "SYNO.Core.Network.Interface", method: "list", version: 1 })
@@ -190,9 +200,9 @@ export async function nasFirewallList(dsm: DsmClient) {
     firewall_enabled: firewall?.enable_firewall ?? null,
     profiles,
     auto_block: autoblock,
-    auto_block_entries: autoblockEntries?.rules ?? autoblockEntries ?? [],
+    auto_block_allow_list: allowList?.ip_info ?? [],
+    auto_block_deny_list: denyList?.ip_info ?? [],
     dos_protection: dosProtection,
-    port_forwarding: Array.isArray(portForward) ? portForward : (portForward as any)?.rules ?? null,
   };
 }
 

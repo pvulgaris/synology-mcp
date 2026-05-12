@@ -18,7 +18,7 @@ export async function nasExternalAccess(dsm: DsmClient) {
       dsm.call({ api: "SYNO.Core.DDNS.Record", method: "list", version: 1 }).catch(() => null),
       dsm.call({ api: "SYNO.Core.AppPortal.ReverseProxy", method: "list", version: 1 }).catch(() => null),
       dsm.call({ api: "SYNO.Core.AppPortal", method: "list", version: 2 }).catch(() => null),
-      dsm.call({ api: "SYNO.Core.PortForwarding.Rules", method: "list", version: 1 }).catch(() => null),
+      dsm.call<any[]>({ api: "SYNO.Core.PortForwarding.Rules", method: "load", version: 1 }).catch(() => null),
     ]);
   return {
     quick_connect: qc
@@ -38,6 +38,6 @@ export async function nasExternalAccess(dsm: DsmClient) {
       display_name: a.display_name,
       enable_redirect: a.enable_redirect,
     })),
-    port_forwarding: portForwarding?.rules ?? null,
+    port_forwarding: Array.isArray(portForwarding) ? portForwarding : (portForwarding as any)?.rules ?? null,
   };
 }
