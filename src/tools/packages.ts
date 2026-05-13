@@ -64,23 +64,35 @@ function sleep(ms: number): Promise<void> {
 
 // ──────────── Reads ────────────
 
+// DSM 7's Package.list response nests `status` AND `is_system_ish` info under
+// `additional`, not at the top level. Previous versions of this tool read
+// `p.status` and `p.is_system_package` — both fields don't exist, so every
+// package came back with status=undefined and is_system=false. Real signal:
+//   - status: `additional.status` ("running" / "stop" / etc.)
+//   - is_system: `additional.install_type === "system"` (DSM-bundled, can't
+//     be uninstalled via Package Center even if it appears in the UI)
+//   - startable: `additional.startable` (can be stopped via Package.Control)
 export async function nasPackagesList(dsm: DsmClient) {
   const data = await dsm.call({
     api: "SYNO.Core.Package",
     method: "list",
     version: 2,
-    params: { additional: '["description","status","beta"]' },
+    params: {
+      additional: '["description","status","beta","install_type","startable"]',
+    },
   });
   return {
     packages: (data?.packages ?? []).map((p: any) => ({
       id: p.id,
       name: p.name,
       version: p.version,
-      status: p.status,
+      status: p.additional?.status,
       additional: {
         description: p.additional?.description,
         beta: p.additional?.beta,
-        is_system: !!p.is_system_package,
+        is_system: p.additional?.install_type === "system",
+        install_type: p.additional?.install_type,
+        startable: !!p.additional?.startable,
       },
     })),
   };
@@ -601,6 +613,28 @@ export async function nasPackageInstall(
   return { before, after, verified: ok };
 }
 
+/** Stop a running package via SYNO.Core.Package.Control. Idempotent — DSM
+ *  returns success for already-stopped packages. POST is required (GET 503s
+ *  the request). Best-effort wait for the status to flip to "stop". */
+async function stopPackage(dsm: DsmClient, packageId: string): Promise<void> {
+  await dsm.call({
+    api: "SYNO.Core.Package.Control",
+    method: "stop",
+    version: 1,
+    post: true,
+    params: { id: packageId },
+  });
+  // Poll briefly for status to flip from "running"; don't fail uninstall if it
+  // doesn't — DSM's uninstall handler also stops things, so the explicit stop
+  // here is belt-and-braces.
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const s = await listOneState(dsm, packageId);
+    if (!s || s.status !== "running") return;
+    await sleep(1000);
+  }
+}
+
 export async function nasPackageUninstall(
   cfg: Config,
   dsm: DsmClient,
@@ -615,8 +649,16 @@ export async function nasPackageUninstall(
   let after: any = null;
   let ok = false;
   let error: string | undefined;
+  let stopped = false;
 
   try {
+    // Stop the package first if it's running. DSM's Uninstallation handler
+    // can stop in-flight, but explicit stop-then-uninstall is the safer
+    // sequence (matches the DSM UI behaviour exactly).
+    if (before.status === "running") {
+      await stopPackage(dsm, args.name);
+      stopped = true;
+    }
     await dsm.call({
       api: "SYNO.Core.Package.Uninstallation",
       method: "uninstall",
@@ -635,7 +677,7 @@ export async function nasPackageUninstall(
   } finally {
     await recordWrite(cfg, {
       tool: "nas_package_uninstall",
-      args: { ...args },
+      args: { ...args, stopped },
       before,
       after,
       ok,
@@ -643,5 +685,5 @@ export async function nasPackageUninstall(
     });
   }
 
-  return { before, after, removed: ok };
+  return { before, after, removed: ok, stopped };
 }
