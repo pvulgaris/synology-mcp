@@ -54,6 +54,7 @@ const ASSERTIONS: Record<string, (out: any) => string | null> = {
     if (typeof o.uptime_seconds !== "number") return "uptime_seconds not numeric";
     if (!o.dsm_version) return "dsm_version missing";
     if (!o.model) return "model missing";
+    if (typeof o.temperature_c !== "number") return "temperature_c not numeric";
     return null;
   },
   nas_storage_health: (o) => {

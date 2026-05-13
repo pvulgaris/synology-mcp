@@ -30,7 +30,7 @@ export async function nasStatus(dsm: DsmClient) {
     dsm_version: info?.firmware_ver,
     uptime: info?.up_time,
     uptime_seconds: parseUpTime(info?.up_time),
-    temperature_c: info?.temperature,
+    temperature_c: info?.sys_temp,
     cpu_load: util?.cpu,
     memory: util?.memory,
     fan: info?.systempwarn,
