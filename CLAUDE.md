@@ -75,7 +75,7 @@ After completion, `Installation.delete path=<tmp>` cleans up the staged .spk (be
 
 ## DSM API quirks (the consolidated cheatsheet)
 
-A live reference of error codes, response shapes, and known API names is at `~/.claude/projects/-redacted-/memory/project_synology_dsm_api_cheatsheet.md` — read it before adding new tools or debugging unexpected `code:` errors. Highlights:
+A reference of error codes, response shapes, and known API names is at [`docs/dsm-api-quirks.md`](docs/dsm-api-quirks.md) — read it before adding new tools or debugging unexpected `code:` errors. Highlights:
 
 - Error 114 = "Lost parameters" (NOT "API key mismatch"). 5100 = "Unable to perform" (NOT empty list).
 - `requestFormat: "JSON"` in `SYNO.API.Info` describes the **response**, not the request — always send form-encoded.

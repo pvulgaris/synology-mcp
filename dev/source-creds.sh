@@ -36,7 +36,8 @@ export AUDIT_LOG_DIR
 # Route every audit record written from dev tsx through the deployed daemon so
 # the NAS-side log stays the single source of truth. The daemon validates the
 # bearer (already in $MCP_BEARER_TOKEN from the keychain) and appends to
-# /audit (bind-mounted to /volume1/docker/synology-nas-mcp/audit/).
+# /audit (bind-mounted to /volume1/docker/synology-nas-mcp/audit/). Replace
+# `nas.local` with whatever DNS/Tailscale name resolves to your NAS.
 : "${MCP_AUDIT_URL:=http://nas.local:8765/audit}"
 export MCP_AUDIT_URL
 
